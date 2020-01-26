@@ -1,6 +1,7 @@
 #ifndef _VECTORWAR_H
 #define _VECTORWAR_H
 
+#include "nongamestate.h"
 #include "ggponet.h"
 
 /*
@@ -19,13 +20,11 @@ enum VectorWarInputs {
    INPUT_BOMB              = (1 << 5),
 };
 
-GGPOSession* VectorWar_Init(SDL_Window* window, unsigned short localport, int num_players, GGPOPlayer *players, int num_spectators);
-GGPOSession* VectorWar_InitSpectator(SDL_Window* window, unsigned short localport, int num_players, char *host_ip, unsigned short host_port);
-void VectorWar_DrawCurrentFrame();
+void VectorWar_Init(SDL_Window* window, int num_players);
+void VectorWar_DrawCurrentFrame(NonGameState ngs);
 void VectorWar_AdvanceFrame(int inputs[], int disconnect_flags);
-void VectorWar_RunFrame(SDL_Window* window);
-void VectorWar_DisconnectPlayer(int player);
 void VectorWar_Exit();
+GGPOSessionCallbacks VectorWar_Callbacks();
 
 #define ARRAY_SIZE(n)      (sizeof(n) / sizeof(n[0]))
 #define FRAME_DELAY        2
