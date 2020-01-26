@@ -19,12 +19,11 @@ enum VectorWarInputs {
    INPUT_BOMB              = (1 << 5),
 };
 
-void VectorWar_Init(SDL_Window* window, unsigned short localport, int num_players, GGPOPlayer *players, int num_spectators);
-void VectorWar_InitSpectator(SDL_Window* window, unsigned short localport, int num_players, char *host_ip, unsigned short host_port);
+GGPOSession* VectorWar_Init(SDL_Window* window, unsigned short localport, int num_players, GGPOPlayer *players, int num_spectators);
+GGPOSession* VectorWar_InitSpectator(SDL_Window* window, unsigned short localport, int num_players, char *host_ip, unsigned short host_port);
 void VectorWar_DrawCurrentFrame();
 void VectorWar_AdvanceFrame(int inputs[], int disconnect_flags);
 void VectorWar_RunFrame(SDL_Window* window);
-void VectorWar_Idle(int time);
 void VectorWar_DisconnectPlayer(int player);
 void VectorWar_Exit();
 

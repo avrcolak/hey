@@ -201,7 +201,7 @@ vw_free_buffer(void* buffer)
  * Initialize the vector war game.  This initializes the game state and
  * the video renderer and creates a new network session.
  */
-void
+GGPOSession*
 VectorWar_Init(SDL_Window* window, unsigned short localport, int num_players, GGPOPlayer* players, int num_spectators)
 {
 	GGPOErrorCode result;
@@ -251,6 +251,8 @@ VectorWar_Init(SDL_Window* window, unsigned short localport, int num_players, GG
 	}
 
 	renderer->SetStatusText("Connecting to peers.");
+
+	return ggpo;
 }
 
 /*
@@ -258,7 +260,7 @@ VectorWar_Init(SDL_Window* window, unsigned short localport, int num_players, GG
  *
  * Create a new spectator session
  */
-void
+GGPOSession*
 VectorWar_InitSpectator(SDL_Window* window, unsigned short localport, int num_players, char* host_ip, unsigned short host_port)
 {
 	GGPOErrorCode result;
@@ -281,6 +283,8 @@ VectorWar_InitSpectator(SDL_Window* window, unsigned short localport, int num_pl
 	result = ggpo_start_spectating(&ggpo, &cb, "vectorwar", num_players, sizeof(int), localport, host_ip, host_port);
 
 	renderer->SetStatusText("Starting new spectator session");
+
+	return ggpo;
 }
 
 /*
@@ -418,19 +422,6 @@ VectorWar_RunFrame(SDL_Window* window)
 			VectorWar_AdvanceFrame(inputs, disconnect_flags);
 		}
 	}
-	VectorWar_DrawCurrentFrame();
-}
-
-/*
- * VectorWar_Idle --
- *
- * Spend our idle time in ggpo so it can use whatever time we have left over
- * for its internal bookkeeping.
- */
-void
-VectorWar_Idle(int time)
-{
-	ggpo_idle(ggpo, time);
 }
 
 void
@@ -439,10 +430,6 @@ VectorWar_Exit()
 	memset(&gs, 0, sizeof(gs));
 	memset(&ngs, 0, sizeof(ngs));
 
-	if (ggpo) {
-		ggpo_close_session(ggpo);
-		ggpo = NULL;
-	}
 	delete renderer;
 	renderer = NULL;
 }
