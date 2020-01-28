@@ -32,11 +32,6 @@ struct PlayerConnectionInfo {
 };
 
 struct NonGameState {
-   struct ChecksumInfo {
-      int framenumber;
-      int checksum;
-   };
-
    void SetConnectState(GGPOPlayerHandle handle, PlayerConnectState state) {
       for (int i = 0; i < num_players; i++) {
          if (players[i].handle == handle) {
@@ -73,12 +68,8 @@ struct NonGameState {
       }
    }
 
-   GGPOPlayerHandle     local_player_handle;
-   PlayerConnectionInfo players[MAX_PLAYERS];
    int                  num_players;
-
-   ChecksumInfo         now;
-   ChecksumInfo         periodic;
+   PlayerConnectionInfo players[MAX_PLAYERS];
 };
 
 #endif

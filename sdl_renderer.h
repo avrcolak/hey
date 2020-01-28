@@ -2,6 +2,7 @@
 #define _SDL_RENDERER_H_
 
 #include "renderer.h"
+#include <SDL.h>
 
 /*
  * sdl_renderer.h --
@@ -15,13 +16,12 @@ public:
     SDLRenderer(SDL_Window* window);
     ~SDLRenderer();
 
-    virtual void Draw(GameState& gs, NonGameState& ngs);
+    virtual void Draw(GameState& gs, const NonGameState& ngs);
     virtual void SetStatusText(const char* text);
 
 protected:
-    void RenderChecksum(int y, NonGameState::ChecksumInfo& info);
     void DrawShip(int which, GameState& gamestate);
-    void DrawConnectState(Ship& ship, PlayerConnectionInfo& info);
+    void DrawConnectState(Ship& ship, const PlayerConnectionInfo& info);
     void CreateFont();
 
     SDL_Renderer* _renderer;

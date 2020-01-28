@@ -15,7 +15,7 @@ class Renderer {
 public:
    virtual ~Renderer() { }
 
-   virtual void Draw(GameState &gs, NonGameState &ngs) = 0;
+   virtual void Draw(GameState &gs, const NonGameState &ngs) = 0;
    virtual void SetStatusText(const char *text) = 0;
 };
 

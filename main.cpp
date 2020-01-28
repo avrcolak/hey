@@ -5,8 +5,8 @@
 #include <imgui.h>
 #include <imgui_impl_opengl2.h>
 #include <imgui_impl_sdl.h>
-#include "vectorwar.h"
 #include "nongamestate.h"
+#include "game.h"
 #include <gl/GL.h>
 
 #ifndef APIENTRYP
@@ -14,6 +14,28 @@
 #endif
 
 typedef void (APIENTRYP PFNGLUSEPROGRAMPROC) (unsigned int);
+
+typedef struct FrameInfo
+{
+	int number;
+	int hash;
+} FrameInfo;
+
+typedef struct FrameReport
+{
+	FrameInfo current;
+	FrameInfo periodic;
+} FrameReport;
+
+FrameReport frame_report;
+
+typedef struct GgpoHandles
+{
+	GGPOSession* session;
+	GGPOPlayerHandle local_player;
+} GgpoHandles;
+
+GgpoHandles ggpo_handles;
 
 NonGameState ngs = { 0 };
 
@@ -37,7 +59,8 @@ bool __cdecl on_event(GGPOEvent* info)
 		// renderer->SetStatusText("");
 		break;
 	case GGPO_EVENTCODE_CONNECTION_INTERRUPTED:
-		ngs.SetDisconnectTimeout(info->u.connection_interrupted.player,
+		ngs.SetDisconnectTimeout(
+			info->u.connection_interrupted.player,
 			SDL_GetTicks(),
 			info->u.connection_interrupted.disconnect_timeout);
 		break;
@@ -114,102 +137,31 @@ void draw_gui(SdlHandles handles)
 	ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 }
 
-typedef struct Inputs {
-	SDL_Window* window;
-} Inputs;
-
-/*
- * ReadInputs --
- *
- * Read the inputs for player 1 from the keyboard.  We never have to
- * worry about player 2.  GGPO will handle remapping his inputs
- * transparently.
- */
-int
-ReadInputs(SDL_Window* window)
+void show_disconnected_player(GGPOErrorCode result, int player)
 {
-	static const struct {
-		int      key;
-		int      input;
-	} inputtable[] = {
-	   { SDL_SCANCODE_UP,       INPUT_THRUST },
-	   { SDL_SCANCODE_DOWN,     INPUT_BREAK },
-	   { SDL_SCANCODE_LEFT,     INPUT_ROTATE_LEFT },
-	   { SDL_SCANCODE_RIGHT,    INPUT_ROTATE_RIGHT },
-	   { SDL_SCANCODE_D,        INPUT_FIRE },
-	   { SDL_SCANCODE_S,        INPUT_BOMB },
-	};
-	int i, inputs = 0;
+	char logbuf[128];
 
-	Uint32 flags = SDL_GetWindowFlags(window);
-
-	if (flags | SDL_WINDOW_INPUT_FOCUS) {
-		const Uint8* states = SDL_GetKeyboardState(NULL);
-
-		for (i = 0; i < sizeof(inputtable) / sizeof(inputtable[0]); i++) {
-			if (states[inputtable[i].key]) {
-				inputs |= inputtable[i].input;
-			}
-		}
-	}
-
-	return inputs;
-}
-
-#define MAX_SHIPS 4
-
-int step_game(Inputs inputs_, GGPOSession* ggpo)
-{
-	GGPOErrorCode result = GGPO_OK;
-	int disconnect_flags;
-	int inputs[MAX_SHIPS] = { 0 };
-
-	if (ngs.local_player_handle != GGPO_INVALID_HANDLE) {
-		int input = ReadInputs(inputs_.window);
-#if defined(SYNC_TEST)
-		input = rand();
-#endif
-		result = ggpo_add_local_input(ggpo, ngs.local_player_handle, &input, sizeof(input));
-	}
-
-	// synchronize these inputs with ggpo.  If we have enough input to proceed
-	// ggpo will modify the input list with the correct inputs to use and
-	// return 1.
 	if (GGPO_SUCCEEDED(result)) {
-		result = ggpo_synchronize_input(ggpo, (void*)inputs, sizeof(int) * MAX_SHIPS, &disconnect_flags);
-		if (GGPO_SUCCEEDED(result)) {
-			// inputs[0] and inputs[1] contain the inputs for p1 and p2.  Advance
-			// the game by 1 frame using those inputs.
-			VectorWar_AdvanceFrame(inputs, disconnect_flags);
-		}
+		sprintf(logbuf, "Disconnected player %d.\n", player);
+	}
+	else {
+		sprintf(logbuf, "Error while disconnecting player (err:%d).\n", result);
 	}
 
-	return 0;
-}
-
-void draw_game()
-{
-	VectorWar_DrawCurrentFrame(ngs);
+	// renderer->SetStatusText(logbuf);
 }
 
 void disconnect_player(int player, GGPOSession* ggpo)
 {
 	if (player < ngs.num_players) {
-		char logbuf[128];
-		GGPOErrorCode result = ggpo_disconnect_player(ggpo, ngs.players[player].handle);
+		GGPOErrorCode result =
+			ggpo_disconnect_player(ggpo, ngs.players[player].handle);
 
-		if (GGPO_SUCCEEDED(result)) {
-			sprintf_s(logbuf, ARRAYSIZE(logbuf), "Disconnected player %d.\n", player);
-		}
-		else {
-			sprintf_s(logbuf, ARRAYSIZE(logbuf), "Error while disconnecting player (err:%d).\n", result);
-		}
-
-		// renderer->SetStatusText(logbuf);
+		show_disconnected_player(result, player);
 	}
 }
 
-int client_process_event(SDL_Event e, SdlHandles handles, Inputs* inputs, GGPOSession* ggpo)
+int client_process_event(SDL_Event e, SdlHandles sdl_handles)
 {
 	switch (e.type) {
 	case SDL_QUIT:
@@ -222,14 +174,15 @@ int client_process_event(SDL_Event e, SdlHandles handles, Inputs* inputs, GGPOSe
 			return 1;
 		}
 		else if (e.key.keysym.sym >= SDLK_F1 && e.key.keysym.sym <= SDLK_F12) {
-			disconnect_player((int)(e.key.keysym.sym - SDLK_F1), ggpo);
+			disconnect_player(
+				(int)(e.key.keysym.sym - SDLK_F1), ggpo_handles.session);
 		}
 		break;
 	case SDL_WINDOWEVENT:
 		switch (e.window.event)
 		{
 		case SDL_WINDOWEVENT_EXPOSED:
-			SDL_UpdateWindowSurface(handles.window);
+			SDL_UpdateWindowSurface(sdl_handles.window);
 			break;
 		case SDL_WINDOWEVENT_CLOSE:
 			return 1;
@@ -237,61 +190,94 @@ int client_process_event(SDL_Event e, SdlHandles handles, Inputs* inputs, GGPOSe
 		break;
 	}
 
-	inputs->window = handles.window; // TODO
 	ImGui_ImplSDL2_ProcessEvent(&e);
 
 	return 0;
 }
 
-void client_loop(SdlHandles handles, GGPOSession* ggpo)
+void update_frame_report(int frame_number, int hash)
+{
+	frame_report.current.number = frame_number;
+	frame_report.current.hash = hash;
+
+	if ((frame_number % 90) == 0) {
+		frame_report.periodic = frame_report.current;
+	}
+}
+
+bool __cdecl advance_frame(int flags)
+{
+	int disconnect_flags = 0;
+	LocalInput inputs[2] = { 0 };
+
+	GGPOErrorCode result = ggpo_synchronize_input(
+		ggpo_handles.session,
+		(void*)inputs,
+		sizeof(LocalInput) * 2,
+		&disconnect_flags);
+
+	if (GGPO_SUCCEEDED(result)) {
+		step_game(inputs, disconnect_flags);
+		ggpo_advance_frame(ggpo_handles.session);
+
+		int frame_number = game_frame_number();
+		int hash = game_state_hash();
+		update_frame_report(frame_number, hash);
+
+		return true;
+	}
+
+	return false;
+}
+
+void work(LocalInput* local_input)
+{
+	capture_input_state(local_input);
+
+	GGPOErrorCode result = ggpo_add_local_input(
+		ggpo_handles.session,
+		ggpo_handles.local_player,
+		local_input,
+		sizeof(LocalInput));
+
+	if (GGPO_SUCCEEDED(result)) {
+		advance_frame(0);
+	}
+}
+
+void client_loop(SdlHandles sdl_handles)
 {
 	int start, next, now;
 
 	start = next = now = SDL_GetTicks();
+	LocalInput local_input = { 0 };
 
 	while (1) {
 		SDL_Event e;
-		Inputs inputs = { 0 };
 
 		while (SDL_PollEvent(&e) != 0) {
-			int quit = client_process_event(e, handles, &inputs, ggpo);
+			int quit = client_process_event(e, sdl_handles);
 
 			if (quit) {
 				return;
 			}
+
+			buffer_event(&e, &local_input);
 		}
 
 		now = SDL_GetTicks();
-		ggpo_idle(ggpo, max(0, next - now - 1));
+		ggpo_idle(ggpo_handles.session, max(0, next - now - 1));
 
 		if (now >= next) {
-			int frame_number = step_game(inputs, ggpo);
-
-			ngs.now.framenumber = frame_number;
-
-			// ngs.now.checksum = fletcher32_checksum((short*)&gs, sizeof(gs) / 2);
-
-			if ((frame_number % 90) == 0) {
-				ngs.periodic = ngs.now;
-			}
-
-			ggpo_advance_frame(ggpo);
-
-			GGPOPlayerHandle handles[MAX_PLAYERS];
-			int count = 0;
-			for (int i = 0; i < ngs.num_players; i++) {
-				if (ngs.players[i].type == GGPO_PLAYERTYPE_REMOTE) {
-					handles[count++] = ngs.players[i].handle;
-				}
-			}
-
+			work(&local_input);
+			local_input = { 0 };
 			next = now + (1000 / 60);
 		}
 
-		draw_game();
-		draw_gui(handles);
+		draw_game(&ngs);
+		draw_gui(sdl_handles);
 
-		SDL_GL_SwapWindow(handles.window);
+		SDL_GL_SwapWindow(sdl_handles.window);
 	}
 }
 
@@ -492,14 +478,20 @@ int parse_args(int argc, char* args[], ClientInit* init)
 	}
 }
 
-GGPOSession* setup_ggpo(ClientInit init, SDL_Window* window)
+GgpoHandles setup_ggpo(ClientInit init, SDL_Window* window)
 {
 	WSADATA wd = { 0 };
 	WSAStartup(MAKEWORD(2, 2), &wd);
 
-	GGPOSession* ggpo;
-	GGPOSessionCallbacks cb = VectorWar_Callbacks();
+	GgpoHandles handles;
+	GGPOSessionCallbacks cb;;
 	cb.on_event = on_event;
+	cb.advance_frame = advance_frame;
+	cb.begin_game = begin_game;
+	cb.load_game_state = load_game_state;
+	cb.free_buffer = free_game_state;
+	cb.log_game_state = log_game_state;
+	cb.save_game_state = save_game_state;
 
 	ngs.num_players = init.num_players;
 
@@ -507,18 +499,18 @@ GGPOSession* setup_ggpo(ClientInit init, SDL_Window* window)
 		SpectatorInit spectator_init = init.role_init.spectator_init;
 
 		GGPOErrorCode result = ggpo_start_spectating(
-			&ggpo,
+			&handles.session,
 			&cb,
 			"vectorwar",
 			init.num_players,
-			sizeof(int),
+			sizeof(LocalInput),
 			init.local_port,
 			spectator_init.host_ip,
 			spectator_init.host_port);
 
 		// renderer->SetStatusText("Starting new spectator session");
 
-		return ggpo;
+		return handles;
 	}
 
 	PlayerInit player_init = init.role_init.player_init;
@@ -530,28 +522,32 @@ GGPOSession* setup_ggpo(ClientInit init, SDL_Window* window)
 		{ 740, 600 },
 	};
 
-#if defined(SYNC_TEST)
-	GGPOErrorCode result = ggpo_start_synctest(
-		&ggpo, &cb, "vectorwar", init.num_players, sizeof(int), 1);
-#else
 	GGPOErrorCode result = ggpo_start_session(
-		&ggpo, &cb, "vectorwar", init.num_players, sizeof(int), init.local_port);
-#endif
+		&handles.session,
+		&cb, 
+		"vectorwar",
+		init.num_players, 
+		sizeof(LocalInput),
+		init.local_port);
 
-	ggpo_set_disconnect_timeout(ggpo, 3000);
-	ggpo_set_disconnect_notify_start(ggpo, 1000);
+	ggpo_set_disconnect_timeout(handles.session, 3000);
+	ggpo_set_disconnect_notify_start(handles.session, 1000);
 
 	for (int i = 0; i < init.num_players + player_init.num_spectators; i++) {
 		GGPOPlayerHandle handle;
-		result = ggpo_add_player(ggpo, player_init.players + i, &handle);
+
+		result = ggpo_add_player(
+			handles.session, player_init.players + i, &handle);
+
 		ngs.players[i].handle = handle;
 		ngs.players[i].type = player_init.players[i].type;
 
 		if (player_init.players[i].type == GGPO_PLAYERTYPE_LOCAL) {
+			handles.local_player = handle;
+
 			ngs.players[i].connect_progress = 100;
-			ngs.local_player_handle = handle;
 			ngs.SetConnectState(handle, Connecting);
-			ggpo_set_frame_delay(ggpo, handle, FRAME_DELAY);
+			ggpo_set_frame_delay(handles.session, handle, 2);
 		}
 		else {
 			ngs.players[i].connect_progress = 0;
@@ -569,27 +565,17 @@ GGPOSession* setup_ggpo(ClientInit init, SDL_Window* window)
 			window_offsets[local_player].y);
 	}
 
-	return ggpo;
+	return handles;
 }
 
-void tear_down_ggpo(GGPOSession* ggpo)
+void tear_down_ggpo()
 {
-	if (ggpo) {
-		ggpo_close_session(ggpo);
-		ggpo = NULL;
+	if (ggpo_handles.session) {
+		ggpo_close_session(ggpo_handles.session);
+		ggpo_handles.session = NULL;
 	}
 
 	WSACleanup();
-}
-
-void setup_game(ClientInit init, SDL_Window* window)
-{
-	VectorWar_Init(window, init.num_players);
-}
-
-void tear_down_game()
-{
-	VectorWar_Exit();
 }
 
 int main(int argc, char* args[])
@@ -603,15 +589,18 @@ int main(int argc, char* args[])
 		return result;
 	}
 
-	setup_imgui(sdl_handles);
-	GGPOSession* ggpo = setup_ggpo(init, sdl_handles.window);
-	setup_game(init, sdl_handles.window);
+	ggpo_handles = setup_ggpo(init, sdl_handles.window);
 
-	client_loop(sdl_handles, ggpo);
+	setup_imgui(sdl_handles);
+	setup_game(sdl_handles.window, init.num_players);
+
+	frame_report = { 0 };
+
+	client_loop(sdl_handles);
 
 	tear_down_game();
-	tear_down_ggpo(ggpo);
 	tear_down_imgui();
+	tear_down_ggpo();
 	tear_down_sdl(sdl_handles);
 
 	return 0;

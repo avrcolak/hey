@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <math.h>
 #include "windows.h"
-#include "vectorwar.h"
 #include "sdl_renderer.h"
 
 #define  PROGRESS_BAR_WIDTH        100
@@ -57,7 +56,7 @@ SDLRenderer::~SDLRenderer()
 }
 
 void
-SDLRenderer::Draw(GameState& gs, NonGameState& ngs)
+SDLRenderer::Draw(GameState& gs, const NonGameState& ngs)
 {
 	SDL_SetRenderDrawColor(_renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 	SDL_RenderClear(_renderer);
@@ -74,14 +73,6 @@ SDLRenderer::Draw(GameState& gs, NonGameState& ngs)
 	}
 
 	SDL_RenderFlush(_renderer);
-	RenderChecksum(40, ngs.periodic);
-}
-
-void
-SDLRenderer::RenderChecksum(int y, NonGameState::ChecksumInfo& info)
-{
-	char checksum[128];
-	sprintf_s(checksum, ARRAYSIZE(checksum), "Frame: %04d  Checksum: %08x", info.framenumber, info.checksum);
 }
 
 void
@@ -144,7 +135,7 @@ SDLRenderer::DrawShip(int which, GameState& gs)
 }
 
 void
-SDLRenderer::DrawConnectState(Ship& ship, PlayerConnectionInfo& info)
+SDLRenderer::DrawConnectState(Ship& ship, const PlayerConnectionInfo& info)
 {
 	char status[64];
 	static const char* statusStrings[] = {

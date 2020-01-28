@@ -6,10 +6,10 @@ project(hey)
 
 add_executable(vectorwar 
     main.cpp 
-    vectorwar.cpp 
     gamestate.cpp 
     sdl_renderer.cpp 
     windows_shims.cpp
+    game.cpp
     imgui-8bcac7d9/imgui.cpp
     imgui-8bcac7d9/imgui_widgets.cpp
     imgui-8bcac7d9/imgui_draw.cpp
