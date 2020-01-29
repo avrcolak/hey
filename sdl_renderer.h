@@ -1,8 +1,8 @@
 #ifndef _SDL_RENDERER_H_
 #define _SDL_RENDERER_H_
 
-#include "renderer.h"
 #include <SDL.h>
+#include "windows_shims.h"
 
 /*
  * sdl_renderer.h --
@@ -11,17 +11,17 @@
  *
  */
 
-class SDLRenderer : public Renderer {
+class SDLRenderer {
 public:
     SDLRenderer(SDL_Window* window);
     ~SDLRenderer();
 
-    virtual void Draw(GameState& gs, const NonGameState& ngs);
-    virtual void SetStatusText(const char* text);
+    virtual void Draw(struct GameState const *gs, struct ConnectionReport const *connection_report);
+    virtual void SetStatusText(char const *text);
 
 protected:
-    void DrawShip(int which, GameState& gamestate);
-    void DrawConnectState(Ship& ship, const PlayerConnectionInfo& info);
+    void DrawShip(int which, GameState const *gs);
+    void DrawConnectState(struct Ship const *ship, struct ConnectionInfo const *info);
     void CreateFont();
 
     SDL_Renderer* _renderer;

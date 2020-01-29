@@ -15,7 +15,7 @@ void tear_down_game();
 
 void step_game(LocalInput const *inputs, int disconnect_flags);
 
-void draw_game(struct NonGameState const *ngs);
+void draw_game(struct ConnectionReport const *connection_report);
 
 int game_frame_number();
 

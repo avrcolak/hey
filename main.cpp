@@ -1,12 +1,13 @@
+#include "connection_report.h"
+#include "game.h"
+#include <ggponet.h>
+#include <imgui.h>
+#include <imgui_impl_opengl2.h>
+#include <imgui_impl_sdl.h>
 #include <SDL.h>
 #include <stdio.h>
 #include <string.h>
 #include <windows.h>
-#include <imgui.h>
-#include <imgui_impl_opengl2.h>
-#include <imgui_impl_sdl.h>
-#include "nongamestate.h"
-#include "game.h"
 #include <gl/GL.h>
 
 #ifndef APIENTRYP
@@ -14,6 +15,14 @@
 #endif
 
 typedef void (APIENTRYP PFNGLUSEPROGRAMPROC) (unsigned int);
+
+typedef struct GgpoHandles
+{
+	GGPOSession* session;
+	GGPOPlayerHandle local_player;
+} GgpoHandles;
+
+GgpoHandles ggpo_handles;
 
 typedef struct FrameInfo
 {
@@ -29,15 +38,29 @@ typedef struct FrameReport
 
 FrameReport frame_report;
 
-typedef struct GgpoHandles
-{
-	GGPOSession* session;
-	GGPOPlayerHandle local_player;
-} GgpoHandles;
+// remotes[i] corresponds with connection_report.connections[i]
+GGPOPlayerHandle remotes[MAX_REMOTES];
 
-GgpoHandles ggpo_handles;
+ConnectionReport connection_report;
 
-NonGameState ngs = { 0 };
+void set_connection_state(GGPOPlayerHandle handle, ConnectionState state) {
+	for (int i = 0; i < connection_report.num_players; i++) {
+		if (remotes[i] == handle) {
+			connection_report.players[i].connect_progress = 0;
+			connection_report.players[i].state = state;
+			break;
+		}
+	}
+}
+
+void update_connect_progress(GGPOPlayerHandle handle, int progress) {
+	for (int i = 0; i < connection_report.num_players; i++) {
+		if (remotes[i] == handle) {
+			connection_report.players[i].connect_progress = progress;
+			break;
+		}
+	}
+}
 
 bool __cdecl on_event(GGPOEvent* info)
 {
@@ -45,30 +68,43 @@ bool __cdecl on_event(GGPOEvent* info)
 
 	switch (info->code) {
 	case GGPO_EVENTCODE_CONNECTED_TO_PEER:
-		ngs.SetConnectState(info->u.connected.player, Synchronizing);
+		set_connection_state(
+			info->u.connected.player, CONNECTION_STATE_Synchronizing);
 		break;
 	case GGPO_EVENTCODE_SYNCHRONIZING_WITH_PEER:
-		progress = 100 * info->u.synchronizing.count / info->u.synchronizing.total;
-		ngs.UpdateConnectProgress(info->u.synchronizing.player, progress);
+		progress = 
+			100 * info->u.synchronizing.count / info->u.synchronizing.total;
+		update_connect_progress(info->u.synchronizing.player, progress);
 		break;
 	case GGPO_EVENTCODE_SYNCHRONIZED_WITH_PEER:
-		ngs.UpdateConnectProgress(info->u.synchronized.player, 100);
+		update_connect_progress(info->u.synchronized.player, 100);
 		break;
 	case GGPO_EVENTCODE_RUNNING:
-		ngs.SetConnectState(Running);
+		for (int i = 0; i < connection_report.num_players; i++) {
+			connection_report.players[i].state = CONNECTION_STATE_Running;
+		}
 		// renderer->SetStatusText("");
 		break;
 	case GGPO_EVENTCODE_CONNECTION_INTERRUPTED:
-		ngs.SetDisconnectTimeout(
-			info->u.connection_interrupted.player,
-			SDL_GetTicks(),
-			info->u.connection_interrupted.disconnect_timeout);
+		for (int i = 0; i < connection_report.num_players; i++) {
+			if (remotes[i] == info->u.connection_interrupted.player) {
+				connection_report.players[i].disconnect_start =
+					SDL_GetTicks();
+				connection_report.players[i].disconnect_timeout =
+					info->u.connection_interrupted.disconnect_timeout;
+				connection_report.players[i].state =
+					CONNECTION_STATE_Disconnecting;
+				break;
+			}
+		}
 		break;
 	case GGPO_EVENTCODE_CONNECTION_RESUMED:
-		ngs.SetConnectState(info->u.connection_resumed.player, Running);
+		set_connection_state(
+			info->u.connection_resumed.player, CONNECTION_STATE_Running);
 		break;
 	case GGPO_EVENTCODE_DISCONNECTED_FROM_PEER:
-		ngs.SetConnectState(info->u.disconnected.player, Disconnected);
+		set_connection_state(
+			info->u.disconnected.player, CONNECTION_STATE_Disconnected);
 		break;
 	case GGPO_EVENTCODE_TIMESYNC:
 		SDL_Delay(1000 * info->u.timesync.frames_ahead / 60);
@@ -153,9 +189,9 @@ void show_disconnected_player(GGPOErrorCode result, int player)
 
 void disconnect_player(int player, GGPOSession* ggpo)
 {
-	if (player < ngs.num_players) {
+	if (player < connection_report.num_players) {
 		GGPOErrorCode result =
-			ggpo_disconnect_player(ggpo, ngs.players[player].handle);
+			ggpo_disconnect_player(ggpo, remotes[player]);
 
 		show_disconnected_player(result, player);
 	}
@@ -274,7 +310,7 @@ void client_loop(SdlHandles sdl_handles)
 			next = now + (1000 / 60);
 		}
 
-		draw_game(&ngs);
+		draw_game(&connection_report);
 		draw_gui(sdl_handles);
 
 		SDL_GL_SwapWindow(sdl_handles.window);
@@ -493,7 +529,7 @@ GgpoHandles setup_ggpo(ClientInit init, SDL_Window* window)
 	cb.log_game_state = log_game_state;
 	cb.save_game_state = save_game_state;
 
-	ngs.num_players = init.num_players;
+	connection_report.num_players = init.num_players;
 
 	if (init.role_init.type == ROLE_TYPE_Spectator) {
 		SpectatorInit spectator_init = init.role_init.spectator_init;
@@ -539,18 +575,19 @@ GgpoHandles setup_ggpo(ClientInit init, SDL_Window* window)
 		result = ggpo_add_player(
 			handles.session, player_init.players + i, &handle);
 
-		ngs.players[i].handle = handle;
-		ngs.players[i].type = player_init.players[i].type;
+		remotes[i] = handle;
+
+		// HACK: Slightly fragile cast.
+		connection_report.players[i].type = (ConnectionType)player_init.players[i].type;
 
 		if (player_init.players[i].type == GGPO_PLAYERTYPE_LOCAL) {
 			handles.local_player = handle;
-
-			ngs.players[i].connect_progress = 100;
-			ngs.SetConnectState(handle, Connecting);
+			connection_report.players[i].connect_progress = 100;
+			set_connection_state(handle, CONNECTION_STATE_Connecting);
 			ggpo_set_frame_delay(handles.session, handle, 2);
 		}
 		else {
-			ngs.players[i].connect_progress = 0;
+			connection_report.players[i].connect_progress = 0;
 		}
 	}
 

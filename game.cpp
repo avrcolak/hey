@@ -1,16 +1,14 @@
-#include "windows_shims.h"
 #include "game.h"
 #include "sdl_renderer.h"
 #include <string.h>
 #include <stdio.h>
+#include "gamestate.h"
 
 GameState gs = { 0 };
-Renderer* renderer = NULL;
+SDLRenderer* renderer = NULL;
 
 /*
- * Simple checksum function stolen from wikipedia:
- *
- *   http://en.wikipedia.org/wiki/Fletcher%27s_checksum
+ * See http://en.wikipedia.org/wiki/Fletcher%27s_checksum
  */
 int fletcher32_checksum(short* data, size_t len)
 {
@@ -70,10 +68,10 @@ void step_game(LocalInput const *inputs, int disconnect_flags)
 	gs.Update(gs_inputs, disconnect_flags);
 }
 
-void draw_game(NonGameState const* ngs)
+void draw_game(ConnectionReport const* connection_report)
 {
 	if (renderer != nullptr) {
-		renderer->Draw(gs, *ngs);
+		renderer->Draw(&gs, connection_report);
 	}
 }
 

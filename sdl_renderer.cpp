@@ -1,7 +1,9 @@
 #include <SDL.h>
 #include <stdio.h>
+#include <string.h>
 #include <math.h>
-#include "windows.h"
+#include "connection_report.h"
+#include "gamestate.h"
 #include "sdl_renderer.h"
 
 #define  PROGRESS_BAR_WIDTH        100
@@ -26,9 +28,10 @@ SDL_Rect ToSDLRect(RECT rect)
 	return sdl_rect;
 }
 
-SDLRenderer::SDLRenderer(SDL_Window* window) :
-	_window(window)
+SDLRenderer::SDLRenderer(SDL_Window* window)
 {
+	_window = window;
+
 	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
 	SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
 
@@ -56,35 +59,35 @@ SDLRenderer::~SDLRenderer()
 }
 
 void
-SDLRenderer::Draw(GameState& gs, const NonGameState& ngs)
+SDLRenderer::Draw(GameState const *gs, ConnectionReport const *connection_report)
 {
 	SDL_SetRenderDrawColor(_renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 	SDL_RenderClear(_renderer);
 
-	SDL_Rect bounds = ToSDLRect(gs._bounds);
+	SDL_Rect bounds = ToSDLRect(gs->_bounds);
 
 	SDL_SetRenderDrawColor(_renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
 	SDL_RenderDrawRect(_renderer, &bounds);
 
-	for (int i = 0; i < gs._num_ships; i++) {
+	for (int i = 0; i < gs->_num_ships; i++) {
 		SDL_SetRenderDrawColor(_renderer, _shipColors[i].r, _shipColors[i].g, _shipColors[i].b, _shipColors[i].a);
 		DrawShip(i, gs);
-		DrawConnectState(gs._ships[i], ngs.players[i]);
+		DrawConnectState(&gs->_ships[i], &connection_report->players[i]);
 	}
 
 	SDL_RenderFlush(_renderer);
 }
 
 void
-SDLRenderer::SetStatusText(const char* text)
+SDLRenderer::SetStatusText(char const *text)
 {
-	strcpy_s(_status, text);
+	strcpy(_status, text);
 }
 
 void
-SDLRenderer::DrawShip(int which, GameState& gs)
+SDLRenderer::DrawShip(int which, GameState const *gs)
 {
-	Ship* ship = gs._ships + which;
+	Ship const *ship = gs->_ships + which;
 	RECT bullet = { 0 };
 	SDL_Point shape[] = {
 	   { SHIP_RADIUS,           0 },
@@ -94,10 +97,10 @@ SDLRenderer::DrawShip(int which, GameState& gs)
 	   { SHIP_RADIUS,           0 },
 	};
 	SDL_Point text_offsets[] = {
-	   { gs._bounds.left + 2, gs._bounds.top + 2 },
-	   { gs._bounds.right - 2, gs._bounds.top + 2 },
-	   { gs._bounds.left + 2, gs._bounds.bottom - 2 },
-	   { gs._bounds.right - 2, gs._bounds.bottom - 2 },
+	   { gs->_bounds.left + 2, gs->_bounds.top + 2 },
+	   { gs->_bounds.right - 2, gs->_bounds.top + 2 },
+	   { gs->_bounds.left + 2, gs->_bounds.bottom - 2 },
+	   { gs->_bounds.right - 2, gs->_bounds.bottom - 2 },
 	};
 	char buf[32];
 	int i;
@@ -135,7 +138,7 @@ SDLRenderer::DrawShip(int which, GameState& gs)
 }
 
 void
-SDLRenderer::DrawConnectState(Ship& ship, const PlayerConnectionInfo& info)
+SDLRenderer::DrawConnectState(Ship const* ship, ConnectionInfo const* info)
 {
 	char status[64];
 	static const char* statusStrings[] = {
@@ -147,23 +150,23 @@ SDLRenderer::DrawConnectState(Ship& ship, const PlayerConnectionInfo& info)
 	int progress = -1;
 
 	*status = '\0';
-	switch (info.state) {
-	case Connecting:
-		sprintf_s(status, ARRAYSIZE(status), (info.type == GGPO_PLAYERTYPE_LOCAL) ? "Local Player" : "Connecting...");
+	switch (info->state) {
+	case CONNECTION_STATE_Connecting:
+		sprintf_s(status, ARRAYSIZE(status), (info->type == PLAYER_TYPE_Local) ? "Local Player" : "Connecting...");
 		break;
 
-	case Synchronizing:
-		progress = info.connect_progress;
-		sprintf_s(status, ARRAYSIZE(status), (info.type == GGPO_PLAYERTYPE_LOCAL) ? "Local Player" : "Synchronizing...");
+	case CONNECTION_STATE_Synchronizing:
+		progress = info->connect_progress;
+		sprintf_s(status, ARRAYSIZE(status), (info->type == PLAYER_TYPE_Local) ? "Local Player" : "Synchronizing...");
 		break;
 
-	case Disconnected:
+	case CONNECTION_STATE_Disconnected:
 		sprintf_s(status, ARRAYSIZE(status), "Disconnected");
 		break;
 
-	case Disconnecting:
+	case CONNECTION_STATE_Disconnecting:
 		sprintf_s(status, ARRAYSIZE(status), "Waiting for player...");
-		progress = (SDL_GetTicks() - info.disconnect_start) * 100 / info.disconnect_timeout;
+		progress = (SDL_GetTicks() - info->disconnect_start) * 100 / info->disconnect_timeout;
 		break;
 	}
 
@@ -172,7 +175,7 @@ SDLRenderer::DrawConnectState(Ship& ship, const PlayerConnectionInfo& info)
 	}
 	if (progress >= 0) {
 		SDL_Color bar;
-		if (info.state == Synchronizing)
+		if (info->state == CONNECTION_STATE_Synchronizing)
 		{
 			bar = { 255, 255, 255, SDL_ALPHA_OPAQUE };
 		}
@@ -180,10 +183,10 @@ SDLRenderer::DrawConnectState(Ship& ship, const PlayerConnectionInfo& info)
 		{
 			bar = _red;
 		}
-		RECT rc = { (LONG)(ship.position.x - (PROGRESS_BAR_WIDTH / 2)),
-					(LONG)(ship.position.y + PROGRESS_BAR_TOP_OFFSET),
-					(LONG)(ship.position.x + (PROGRESS_BAR_WIDTH / 2)),
-					(LONG)(ship.position.y + PROGRESS_BAR_TOP_OFFSET + PROGRESS_BAR_HEIGHT) };
+		RECT rc = { (LONG)(ship->position.x - (PROGRESS_BAR_WIDTH / 2)),
+					(LONG)(ship->position.y + PROGRESS_BAR_TOP_OFFSET),
+					(LONG)(ship->position.x + (PROGRESS_BAR_WIDTH / 2)),
+					(LONG)(ship->position.y + PROGRESS_BAR_TOP_OFFSET + PROGRESS_BAR_HEIGHT) };
 		SDL_Rect rect = ToSDLRect(rc);
 
 		SDL_SetRenderDrawColor(_renderer, 128, 128, 128, SDL_ALPHA_OPAQUE);
