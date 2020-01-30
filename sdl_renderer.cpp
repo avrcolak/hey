@@ -5,6 +5,7 @@
 #include "connection_report.h"
 #include "gamestate.h"
 #include "sdl_renderer.h"
+#include "utils.h"
 
 #define  PROGRESS_BAR_WIDTH        100
 #define  PROGRESS_BAR_TOP_OFFSET    22
@@ -15,18 +16,6 @@
 #define  PROGRESS_BAR_TOP_OFFSET    22
 #define  PROGRESS_BAR_HEIGHT         8
 #define  PROGRESS_TEXT_OFFSET       (PROGRESS_BAR_TOP_OFFSET + PROGRESS_BAR_HEIGHT + 4)
-
-SDL_Rect ToSDLRect(RECT rect)
-{
-	SDL_Rect sdl_rect;
-
-	sdl_rect.x = rect.left;
-	sdl_rect.y = rect.top;
-	sdl_rect.w = rect.right - rect.left;
-	sdl_rect.h = rect.bottom - rect.top;
-
-	return sdl_rect;
-}
 
 SDLRenderer::SDLRenderer(SDL_Window* window)
 {
@@ -38,11 +27,6 @@ SDLRenderer::SDLRenderer(SDL_Window* window)
 	_renderer = SDL_CreateRenderer(window, -1, 0);
 
 	*_status = '\0';
-
-	int w, h;
-	SDL_GetWindowSize(window, &w, &h);
-	_rc.right = w;
-	_rc.bottom = h;
 
 	_shipColors[0] = { 255, 0, 0, SDL_ALPHA_OPAQUE };
 	_shipColors[1] = { 0, 255, 0, SDL_ALPHA_OPAQUE };
@@ -59,12 +43,18 @@ SDLRenderer::~SDLRenderer()
 }
 
 void
-SDLRenderer::Draw(GameState const *gs, ConnectionReport const *connection_report)
+SDLRenderer::Draw(GameState const* gs, ConnectionReport const* connection_report)
 {
 	SDL_SetRenderDrawColor(_renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 	SDL_RenderClear(_renderer);
 
-	SDL_Rect bounds = ToSDLRect(gs->_bounds);
+	SDL_Rect bounds =
+	{
+		gs->_bounds.left,
+		gs->_bounds.top,
+		gs->_bounds.right - gs->_bounds.left,
+		gs->_bounds.bottom - gs->_bounds.top
+	};
 
 	SDL_SetRenderDrawColor(_renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
 	SDL_RenderDrawRect(_renderer, &bounds);
@@ -79,16 +69,16 @@ SDLRenderer::Draw(GameState const *gs, ConnectionReport const *connection_report
 }
 
 void
-SDLRenderer::SetStatusText(char const *text)
+SDLRenderer::SetStatusText(char const* text)
 {
 	strcpy(_status, text);
 }
 
 void
-SDLRenderer::DrawShip(int which, GameState const *gs)
+SDLRenderer::DrawShip(int which, GameState const* gs)
 {
-	Ship const *ship = gs->_ships + which;
-	RECT bullet = { 0 };
+	Ship const* ship = gs->_ships + which;
+
 	SDL_Point shape[] = {
 	   { SHIP_RADIUS,           0 },
 	   { -SHIP_RADIUS,          SHIP_WIDTH },
@@ -96,16 +86,15 @@ SDLRenderer::DrawShip(int which, GameState const *gs)
 	   { -SHIP_RADIUS,          -SHIP_WIDTH },
 	   { SHIP_RADIUS,           0 },
 	};
+
 	SDL_Point text_offsets[] = {
 	   { gs->_bounds.left + 2, gs->_bounds.top + 2 },
 	   { gs->_bounds.right - 2, gs->_bounds.top + 2 },
 	   { gs->_bounds.left + 2, gs->_bounds.bottom - 2 },
 	   { gs->_bounds.right - 2, gs->_bounds.bottom - 2 },
 	};
-	char buf[32];
-	int i;
 
-	for (i = 0; i < ARRAYSIZE(shape); i++) {
+	for (int i = 0; i < ARRAYSIZE(shape); i++) {
 		double newx, newy;
 		double cost, sint, theta;
 
@@ -121,19 +110,22 @@ SDLRenderer::DrawShip(int which, GameState const *gs)
 	}
 	SDL_RenderDrawLines(_renderer, shape, 5);
 
-	for (i = 0; i < MAX_BULLETS; i++) {
+	for (int i = 0; i < MAX_BULLETS; i++) {
 		if (ship->bullets[i].active) {
-			bullet.left = ship->bullets[i].position.x - 1;
-			bullet.right = ship->bullets[i].position.x + 1;
-			bullet.top = ship->bullets[i].position.y - 1;
-			bullet.bottom = ship->bullets[i].position.y + 1;
-
-			SDL_Rect rect = ToSDLRect(bullet);
+			SDL_Rect rect =
+			{
+				ship->bullets[i].position.x - 1,
+				ship->bullets[i].position.y - 1,
+				2,
+				2
+			};
 
 			SDL_SetRenderDrawColor(_renderer, _bullet.r, _bullet.g, _bullet.b, _bullet.a);
 			SDL_RenderFillRect(_renderer, &rect);
 		}
 	}
+
+	char buf[32];
 	sprintf_s(buf, ARRAYSIZE(buf), "Hits: %d", ship->score);
 }
 
@@ -175,28 +167,25 @@ SDLRenderer::DrawConnectState(Ship const* ship, ConnectionInfo const* info)
 	}
 	if (progress >= 0) {
 		SDL_Color bar;
-		if (info->state == CONNECTION_STATE_Synchronizing)
-		{
+		if (info->state == CONNECTION_STATE_Synchronizing) {
 			bar = { 255, 255, 255, SDL_ALPHA_OPAQUE };
 		}
-		else
-		{
+		else {
 			bar = _red;
 		}
-		RECT rc = { (LONG)(ship->position.x - (PROGRESS_BAR_WIDTH / 2)),
-					(LONG)(ship->position.y + PROGRESS_BAR_TOP_OFFSET),
-					(LONG)(ship->position.x + (PROGRESS_BAR_WIDTH / 2)),
-					(LONG)(ship->position.y + PROGRESS_BAR_TOP_OFFSET + PROGRESS_BAR_HEIGHT) };
-		SDL_Rect rect = ToSDLRect(rc);
+
+		SDL_Rect rc = { (int)(ship->position.x - (PROGRESS_BAR_WIDTH / 2)),
+						(int)(ship->position.y + PROGRESS_BAR_TOP_OFFSET),
+						(int)PROGRESS_BAR_WIDTH,
+						(int)PROGRESS_BAR_HEIGHT };
 
 		SDL_SetRenderDrawColor(_renderer, 128, 128, 128, SDL_ALPHA_OPAQUE);
-		SDL_RenderDrawRect(_renderer, &rect);
+		SDL_RenderDrawRect(_renderer, &rc);
 
-		rc.right = rc.left + min(100, progress) * PROGRESS_BAR_WIDTH / 100;
-		InflateRect(&rc, -1, -1);
-		rect = ToSDLRect(rc);
+		rc.w = min(100, progress) * PROGRESS_BAR_WIDTH / 100;
+		rc = { rc.x + 1, rc.y + 1, rc.w - 1, rc.h - 1 };
 
 		SDL_SetRenderDrawColor(_renderer, bar.r, bar.g, bar.b, SDL_ALPHA_OPAQUE);
-		SDL_RenderFillRect(_renderer, &rect);
+		SDL_RenderFillRect(_renderer, &rc);
 	}
 }

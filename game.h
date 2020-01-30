@@ -1,6 +1,8 @@
 #ifndef _GAME_H
 #define _GAME_H
 
+#define MAX_PLAYERS 4
+
 typedef struct LocalInput {
     int inputs;
 } LocalInput;

@@ -72,7 +72,7 @@ bool __cdecl on_event(GGPOEvent* info)
 			info->u.connected.player, CONNECTION_STATE_Synchronizing);
 		break;
 	case GGPO_EVENTCODE_SYNCHRONIZING_WITH_PEER:
-		progress = 
+		progress =
 			100 * info->u.synchronizing.count / info->u.synchronizing.total;
 		update_connect_progress(info->u.synchronizing.player, progress);
 		break;
@@ -244,12 +244,12 @@ void update_frame_report(int frame_number, int hash)
 bool __cdecl advance_frame(int flags)
 {
 	int disconnect_flags = 0;
-	LocalInput inputs[2] = { 0 };
+	LocalInput inputs[MAX_PLAYERS] = { 0 };
 
 	GGPOErrorCode result = ggpo_synchronize_input(
 		ggpo_handles.session,
 		(void*)inputs,
-		sizeof(LocalInput) * 2,
+		sizeof(LocalInput) * MAX_PLAYERS,
 		&disconnect_flags);
 
 	if (GGPO_SUCCEEDED(result)) {
@@ -560,9 +560,9 @@ GgpoHandles setup_ggpo(ClientInit init, SDL_Window* window)
 
 	GGPOErrorCode result = ggpo_start_session(
 		&handles.session,
-		&cb, 
+		&cb,
 		"vectorwar",
-		init.num_players, 
+		init.num_players,
 		sizeof(LocalInput),
 		init.local_port);
 

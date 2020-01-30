@@ -1,23 +1,13 @@
 #ifndef _GAMESTATE_H_
 #define _GAMESTATE_H_
 
-#include "windows_shims.h"
-
-/*
- * gamestate.h --
- *
- * Encapsulates all the game state for the vector war application inside
- * a single structure.  This makes it trivial to implement our GGPO
- * save and load functions.
- */
-
 enum VectorWarInputs {
-    INPUT_THRUST = (1 << 0),
-    INPUT_BREAK = (1 << 1),
-    INPUT_ROTATE_LEFT = (1 << 2),
-    INPUT_ROTATE_RIGHT = (1 << 3),
-    INPUT_FIRE = (1 << 4),
-    INPUT_BOMB = (1 << 5),
+	INPUT_THRUST = (1 << 0),
+	INPUT_BREAK = (1 << 1),
+	INPUT_ROTATE_LEFT = (1 << 2),
+	INPUT_ROTATE_RIGHT = (1 << 3),
+	INPUT_FIRE = (1 << 4),
+	INPUT_BOMB = (1 << 5),
 };
 
 #define PI                    ((double)3.1415926)
@@ -37,42 +27,44 @@ enum VectorWarInputs {
 #define MAX_SHIPS               4
 
 struct Position {
-   double x, y;
+	double x, y;
 };
 
 struct Velocity {
-   double dx, dy;
+	double dx, dy;
 };
 
 struct Bullet {
-   bool     active;
-   Position position;
-   Velocity velocity;
+	bool     active;
+	Position position;
+	Velocity velocity;
 };
 
 struct Ship {
-   Position position;
-   Velocity velocity;
-   int      radius;
-   int      heading;
-   int      health;
-   int      speed;
-   int      cooldown;
-   Bullet   bullets[MAX_BULLETS];
-   int      score;
+	Position position;
+	Velocity velocity;
+	int      radius;
+	int      heading;
+	int      health;
+	int      speed;
+	int      cooldown;
+	Bullet   bullets[MAX_BULLETS];
+	int      score;
 };
 
-struct GameState {
-   void Init(SDL_Window* window, int num_players);
-   void GetShipAI(int i, double *heading, double *thrust, int *fire);
-   void ParseShipInputs(int inputs, int i, double *heading, double *thrust, int *fire);
-   void MoveShip(int i, double heading, double thrust, int fire);
-   void Update(int inputs[], int disconnect_flags);
+typedef struct Bounds
+{
+	long left;
+	long top;
+	long right;
+	long bottom;
+} Bounds;
 
-   int         _framenumber;
-   RECT        _bounds;
-   int         _num_ships;
-   Ship        _ships[MAX_SHIPS];
+struct GameState {
+	int         _framenumber;
+	Bounds      _bounds;
+	int         _num_ships;
+	Ship        _ships[MAX_SHIPS];
 };
 
 #endif
