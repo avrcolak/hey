@@ -6,8 +6,8 @@ project(hey)
 
 add_executable(vectorwar 
     main.cpp 
-    sdl_renderer.cpp 
-    game.cpp
+    renderer.cpp 
+    game.c
     imgui-8bcac7d9/imgui.cpp
     imgui-8bcac7d9/imgui_widgets.cpp
     imgui-8bcac7d9/imgui_draw.cpp
@@ -15,12 +15,14 @@ add_executable(vectorwar
     imgui-8bcac7d9/imgui_impl_opengl2.cpp
     imgui-8bcac7d9/imgui_impl_sdl.cpp)
 
-set_property(TARGET vectorwar PROPERTY
-  MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set_property(TARGET vectorwar PROPERTY C_STANDARD 11)
 
 if(MSVC)
-	set_property(TARGET vectorwar PROPERTY
+    set_property(TARGET vectorwar PROPERTY
         LINK_FLAGS "/NODEFAULTLIB:MSVCRT /NODEFAULTLIB:MSVCPRT")
+    set_property(TARGET vectorwar PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_compile_options(vectorwar PRIVATE /W4)
 endif()
 
 target_include_directories(vectorwar PRIVATE

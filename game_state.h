@@ -1,15 +1,6 @@
 #ifndef _GAMESTATE_H_
 #define _GAMESTATE_H_
 
-enum VectorWarInputs {
-	INPUT_THRUST = (1 << 0),
-	INPUT_BREAK = (1 << 1),
-	INPUT_ROTATE_LEFT = (1 << 2),
-	INPUT_ROTATE_RIGHT = (1 << 3),
-	INPUT_FIRE = (1 << 4),
-	INPUT_BOMB = (1 << 5),
-};
-
 #define PI                    ((double)3.1415926)
 #define STARTING_HEALTH       100
 #define ROTATE_INCREMENT        3
@@ -23,24 +14,32 @@ enum VectorWarInputs {
 #define MAX_BULLETS             30
 #define BULLET_COOLDOWN         8
 #define BULLET_DAMAGE           10
-
 #define MAX_SHIPS               4
 
-struct Position {
+typedef enum VectorWarInputs {
+	INPUT_THRUST = (1 << 0),
+	INPUT_BREAK = (1 << 1),
+	INPUT_ROTATE_LEFT = (1 << 2),
+	INPUT_ROTATE_RIGHT = (1 << 3),
+	INPUT_FIRE = (1 << 4),
+	INPUT_BOMB = (1 << 5),
+} VectorWarInputs;
+
+typedef struct Position {
 	double x, y;
-};
+} Position;
 
-struct Velocity {
+typedef struct Velocity {
 	double dx, dy;
-};
+} Velocity;
 
-struct Bullet {
-	bool     active;
+typedef struct Bullet {
+	int     active;
 	Position position;
 	Velocity velocity;
-};
+} Bullet;
 
-struct Ship {
+typedef struct Ship {
 	Position position;
 	Velocity velocity;
 	int      radius;
@@ -50,7 +49,7 @@ struct Ship {
 	int      cooldown;
 	Bullet   bullets[MAX_BULLETS];
 	int      score;
-};
+} Ship;
 
 typedef struct Bounds
 {
@@ -60,11 +59,11 @@ typedef struct Bounds
 	long bottom;
 } Bounds;
 
-struct GameState {
+typedef struct GameState {
 	int         _framenumber;
 	Bounds      _bounds;
 	int         _num_ships;
 	Ship        _ships[MAX_SHIPS];
-};
+} GameState;
 
 #endif

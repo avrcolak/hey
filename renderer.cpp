@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include "game_state.h"
 #include "connection_report.h"
-#include "gamestate.h"
-#include "sdl_renderer.h"
+#include "renderer.h"
 #include "utils.h"
 
 #define  PROGRESS_BAR_WIDTH        100
@@ -17,65 +17,17 @@
 #define  PROGRESS_BAR_HEIGHT         8
 #define  PROGRESS_TEXT_OFFSET       (PROGRESS_BAR_TOP_OFFSET + PROGRESS_BAR_HEIGHT + 4)
 
-SDLRenderer::SDLRenderer(SDL_Window* window)
+SDL_Color ship_colors[4] = 
 {
-	_window = window;
+	{ 255, 0, 0, SDL_ALPHA_OPAQUE },
+	{ 0, 255, 0, SDL_ALPHA_OPAQUE },
+	{ 0, 0, 255, SDL_ALPHA_OPAQUE },
+	{ 128, 128, 128, SDL_ALPHA_OPAQUE },
+};
+SDL_Color red = { 255, 0, 0, SDL_ALPHA_OPAQUE };
+SDL_Color safety_yellow = { 255, 192, 0, SDL_ALPHA_OPAQUE };
 
-	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
-	SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
-
-	_renderer = SDL_CreateRenderer(window, -1, 0);
-
-	*_status = '\0';
-
-	_shipColors[0] = { 255, 0, 0, SDL_ALPHA_OPAQUE };
-	_shipColors[1] = { 0, 255, 0, SDL_ALPHA_OPAQUE };
-	_shipColors[2] = { 0, 0, 255, SDL_ALPHA_OPAQUE };
-	_shipColors[3] = { 128, 128, 128, SDL_ALPHA_OPAQUE };
-
-	_red = { 255, 0, 0, SDL_ALPHA_OPAQUE };
-	_bullet = { 255, 192, 0, SDL_ALPHA_OPAQUE };
-}
-
-SDLRenderer::~SDLRenderer()
-{
-	SDL_DestroyRenderer(_renderer);
-}
-
-void
-SDLRenderer::Draw(GameState const* gs, ConnectionReport const* connection_report)
-{
-	SDL_SetRenderDrawColor(_renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
-	SDL_RenderClear(_renderer);
-
-	SDL_Rect bounds =
-	{
-		gs->_bounds.left,
-		gs->_bounds.top,
-		gs->_bounds.right - gs->_bounds.left,
-		gs->_bounds.bottom - gs->_bounds.top
-	};
-
-	SDL_SetRenderDrawColor(_renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
-	SDL_RenderDrawRect(_renderer, &bounds);
-
-	for (int i = 0; i < gs->_num_ships; i++) {
-		SDL_SetRenderDrawColor(_renderer, _shipColors[i].r, _shipColors[i].g, _shipColors[i].b, _shipColors[i].a);
-		DrawShip(i, gs);
-		DrawConnectState(&gs->_ships[i], &connection_report->players[i]);
-	}
-
-	SDL_RenderFlush(_renderer);
-}
-
-void
-SDLRenderer::SetStatusText(char const* text)
-{
-	strcpy(_status, text);
-}
-
-void
-SDLRenderer::DrawShip(int which, GameState const* gs)
+void draw_ship(SDL_Renderer* renderer, int which, GameState const* gs)
 {
 	Ship const* ship = gs->_ships + which;
 
@@ -105,23 +57,23 @@ SDLRenderer::DrawShip(int which, GameState const* gs)
 		newx = shape[i].x * cost - shape[i].y * sint;
 		newy = shape[i].x * sint + shape[i].y * cost;
 
-		shape[i].x = newx + ship->position.x;
-		shape[i].y = newy + ship->position.y;
+		shape[i].x = (int)(newx + ship->position.x);
+		shape[i].y = (int)(newy + ship->position.y);
 	}
-	SDL_RenderDrawLines(_renderer, shape, 5);
+	SDL_RenderDrawLines(renderer, shape, 5);
 
 	for (int i = 0; i < MAX_BULLETS; i++) {
 		if (ship->bullets[i].active) {
 			SDL_Rect rect =
 			{
-				ship->bullets[i].position.x - 1,
-				ship->bullets[i].position.y - 1,
+				(int)ship->bullets[i].position.x - 1,
+				(int)ship->bullets[i].position.y - 1,
 				2,
 				2
 			};
 
-			SDL_SetRenderDrawColor(_renderer, _bullet.r, _bullet.g, _bullet.b, _bullet.a);
-			SDL_RenderFillRect(_renderer, &rect);
+			SDL_SetRenderDrawColor(renderer, safety_yellow.r, safety_yellow.g, safety_yellow.b, safety_yellow.a);
+			SDL_RenderFillRect(renderer, &rect);
 		}
 	}
 
@@ -129,8 +81,7 @@ SDLRenderer::DrawShip(int which, GameState const* gs)
 	sprintf_s(buf, ARRAYSIZE(buf), "Hits: %d", ship->score);
 }
 
-void
-SDLRenderer::DrawConnectState(Ship const* ship, ConnectionInfo const* info)
+void draw_connect_state(SDL_Renderer* renderer, Ship const* ship, ConnectionInfo const* info)
 {
 	char status[64];
 	static const char* statusStrings[] = {
@@ -171,7 +122,7 @@ SDLRenderer::DrawConnectState(Ship const* ship, ConnectionInfo const* info)
 			bar = { 255, 255, 255, SDL_ALPHA_OPAQUE };
 		}
 		else {
-			bar = _red;
+			bar = red;
 		}
 
 		SDL_Rect rc = { (int)(ship->position.x - (PROGRESS_BAR_WIDTH / 2)),
@@ -179,13 +130,38 @@ SDLRenderer::DrawConnectState(Ship const* ship, ConnectionInfo const* info)
 						(int)PROGRESS_BAR_WIDTH,
 						(int)PROGRESS_BAR_HEIGHT };
 
-		SDL_SetRenderDrawColor(_renderer, 128, 128, 128, SDL_ALPHA_OPAQUE);
-		SDL_RenderDrawRect(_renderer, &rc);
+		SDL_SetRenderDrawColor(renderer, 128, 128, 128, SDL_ALPHA_OPAQUE);
+		SDL_RenderDrawRect(renderer, &rc);
 
 		rc.w = min(100, progress) * PROGRESS_BAR_WIDTH / 100;
 		rc = { rc.x + 1, rc.y + 1, rc.w - 1, rc.h - 1 };
 
-		SDL_SetRenderDrawColor(_renderer, bar.r, bar.g, bar.b, SDL_ALPHA_OPAQUE);
-		SDL_RenderFillRect(_renderer, &rc);
+		SDL_SetRenderDrawColor(renderer, bar.r, bar.g, bar.b, SDL_ALPHA_OPAQUE);
+		SDL_RenderFillRect(renderer, &rc);
 	}
+}
+
+void draw(SDL_Renderer* renderer, GameState const* gs, ConnectionReport const* connection_report)
+{
+	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+	SDL_RenderClear(renderer);
+
+	SDL_Rect bounds =
+	{
+		gs->_bounds.left,
+		gs->_bounds.top,
+		gs->_bounds.right - gs->_bounds.left,
+		gs->_bounds.bottom - gs->_bounds.top
+	};
+
+	SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+	SDL_RenderDrawRect(renderer, &bounds);
+
+	for (int i = 0; i < gs->_num_ships; i++) {
+		SDL_SetRenderDrawColor(renderer, ship_colors[i].r, ship_colors[i].g, ship_colors[i].b, ship_colors[i].a);
+		draw_ship(renderer, i, gs);
+		draw_connect_state(renderer, &gs->_ships[i], &connection_report->players[i]);
+	}
+
+	SDL_RenderFlush(renderer);
 }

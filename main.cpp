@@ -119,6 +119,7 @@ typedef struct SdlHandles
 	SDL_Window* window;
 	SDL_GLContext gl_context;
 	PFNGLUSEPROGRAMPROC glUseProgram;
+	SDL_Renderer* renderer;
 } SdlHandles;
 
 void draw_gui(SdlHandles handles)
@@ -178,10 +179,15 @@ void show_disconnected_player(GGPOErrorCode result, int player)
 	char logbuf[128];
 
 	if (GGPO_SUCCEEDED(result)) {
-		sprintf(logbuf, "Disconnected player %d.\n", player);
+		sprintf_s(
+			logbuf, ARRAYSIZE(logbuf), "Disconnected player %d.\n", player);
 	}
 	else {
-		sprintf(logbuf, "Error while disconnecting player (err:%d).\n", result);
+		sprintf_s(
+			logbuf,
+			ARRAYSIZE(logbuf),
+			"Error while disconnecting player (err:%d).\n",
+			result);
 	}
 
 	// renderer->SetStatusText(logbuf);
@@ -243,6 +249,7 @@ void update_frame_report(int frame_number, int hash)
 
 bool __cdecl advance_frame(int flags)
 {
+	(void)flags;
 	int disconnect_flags = 0;
 	LocalInput inputs[MAX_PLAYERS] = { 0 };
 
@@ -310,7 +317,7 @@ void client_loop(SdlHandles sdl_handles)
 			next = now + (1000 / 60);
 		}
 
-		draw_game(&connection_report);
+		draw_game(sdl_handles.renderer, &connection_report);
 		draw_gui(sdl_handles);
 
 		SDL_GL_SwapWindow(sdl_handles.window);
@@ -345,13 +352,19 @@ SdlHandles setup_sdl()
 		SDL_GL_SetSwapInterval(1);
 	}
 
-	return { window, gl_context, glUseProgram };
+	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+	SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
+
+	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
+
+	return { window, gl_context, glUseProgram, renderer };
 }
 
 void tear_down_sdl(SdlHandles handles)
 {
 	SDL_GL_DeleteContext(handles.gl_context);
 	SDL_DestroyWindow(handles.window);
+	SDL_DestroyRenderer(handles.renderer);
 	SDL_Quit();
 }
 
@@ -435,16 +448,14 @@ int parse_args(int argc, char* args[], ClientInit* init)
 		return 1;
 	}
 
-	char wide_ip_buffer[128];
-	unsigned int wide_ip_buffer_size = (unsigned int)ARRAYSIZE(wide_ip_buffer);
-
 	if (strcmp(args[offset], "spectate") == 0) {
 		init->role_init.type = ROLE_TYPE_Spectator;
 
-		int result = sscanf(
+		int result = sscanf_s(
 			args[offset + 1],
 			"%[^:]:%hu",
 			init->role_init.spectator_init.host_ip,
+			(unsigned int)ARRAYSIZE(init->role_init.spectator_init.host_ip),
 			&init->role_init.spectator_init.host_port);
 
 		if (result != 2) {
@@ -476,10 +487,11 @@ int parse_args(int argc, char* args[], ClientInit* init)
 
 			players[i].type = GGPO_PLAYERTYPE_REMOTE;
 
-			int result = sscanf(
+			int result = sscanf_s(
 				arg,
 				"%[^:]:%hd",
 				players[i].u.remote.ip_address,
+				(unsigned int)ARRAYSIZE(players[i].u.remote.ip_address),
 				&players[i].u.remote.port);
 
 			if (result != 2) {
@@ -494,10 +506,11 @@ int parse_args(int argc, char* args[], ClientInit* init)
 		while (offset < argc) {
 			players[i].type = GGPO_PLAYERTYPE_SPECTATOR;
 
-			int result = sscanf(
+			int result = sscanf_s(
 				args[offset++],
 				"%[^:]:%hd",
 				players[i].u.remote.ip_address,
+				(unsigned int)ARRAYSIZE(players[i].u.remote.ip_address),
 				&players[i].u.remote.port);
 
 			if (result != 2) {
@@ -514,6 +527,31 @@ int parse_args(int argc, char* args[], ClientInit* init)
 	}
 }
 
+bool __cdecl begin_game_callback(const char* game)
+{
+	return begin_game(game);
+}
+
+bool __cdecl load_game_state_callback(unsigned char* buffer, int len)
+{
+	return load_game_state(buffer, len);
+}
+
+bool __cdecl save_game_state_callback(unsigned char** buffer, int* len, int* checksum, int frame)
+{
+	return save_game_state(buffer, len, checksum, frame);
+}
+
+void __cdecl free_buffer_callback(void* buffer)
+{
+	free_game_state(buffer);
+}
+
+bool __cdecl log_game_state_callback(char* filename, unsigned char* buffer, int len)
+{
+	return log_game_state(filename, buffer, len);
+}
+
 GgpoHandles setup_ggpo(ClientInit init, SDL_Window* window)
 {
 	WSADATA wd = { 0 };
@@ -523,18 +561,18 @@ GgpoHandles setup_ggpo(ClientInit init, SDL_Window* window)
 	GGPOSessionCallbacks cb;;
 	cb.on_event = on_event;
 	cb.advance_frame = advance_frame;
-	cb.begin_game = begin_game;
-	cb.load_game_state = load_game_state;
-	cb.free_buffer = free_game_state;
-	cb.log_game_state = log_game_state;
-	cb.save_game_state = save_game_state;
+	cb.begin_game = begin_game_callback;
+	cb.load_game_state = load_game_state_callback;
+	cb.free_buffer = free_buffer_callback;
+	cb.log_game_state = log_game_state_callback;
+	cb.save_game_state = save_game_state_callback;
 
 	connection_report.num_players = init.num_players;
 
 	if (init.role_init.type == ROLE_TYPE_Spectator) {
 		SpectatorInit spectator_init = init.role_init.spectator_init;
 
-		GGPOErrorCode result = ggpo_start_spectating(
+		ggpo_start_spectating(
 			&handles.session,
 			&cb,
 			"vectorwar",

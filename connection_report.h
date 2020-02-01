@@ -1,7 +1,7 @@
 #ifndef _NON_GAMESTATE_H_
 #define _NON_GAMESTATE_H_
 
-#define MAX_REMOTES     64
+#define MAX_REMOTES 64
 
 typedef enum ConnectionType {
     PLAYER_TYPE_Local,
@@ -17,17 +17,17 @@ typedef enum ConnectionState {
    CONNECTION_STATE_Disconnecting,
 } ConnectionState;
 
-struct ConnectionInfo {
+typedef struct ConnectionInfo {
    ConnectionType type;
    ConnectionState state;
    int connect_progress;
    int disconnect_timeout;
    int disconnect_start;
-};
+} ConnectionInfo;
 
-struct ConnectionReport {
+typedef struct ConnectionReport {
    int num_players;
    ConnectionInfo players[MAX_REMOTES];
-};
+} ConnectionReport;
 
 #endif

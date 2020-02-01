@@ -3,6 +3,10 @@
 
 #define MAX_PLAYERS 4
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct LocalInput {
     int inputs;
 } LocalInput;
@@ -17,20 +21,24 @@ void tear_down_game();
 
 void step_game(LocalInput const *inputs, int disconnect_flags);
 
-void draw_game(struct ConnectionReport const *connection_report);
+void draw_game(struct SDL_Renderer* renderer, struct ConnectionReport const *connection_report);
 
 int game_frame_number();
 
 int game_state_hash();
 
-bool __cdecl begin_game(const char*);
+int begin_game(const char* game);
 
-bool __cdecl load_game_state(unsigned char *buffer, int len);
+int load_game_state(unsigned char *buffer, int len);
 
-bool __cdecl save_game_state(unsigned char **buffer, int *len, int *checksum, int);
+int save_game_state(unsigned char **buffer, int *len, int *checksum, int frame);
 
-void __cdecl free_game_state(void *buffer);
+void free_game_state(void *buffer);
 
-bool __cdecl log_game_state(char *filename, unsigned char *buffer, int);
+int log_game_state(char *filename, unsigned char *buffer, int len);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

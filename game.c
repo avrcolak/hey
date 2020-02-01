@@ -1,11 +1,13 @@
+#include <SDL.h>
 #include <string.h>
 #include <stdio.h>
+#include "connection_report.h"
 #include "game.h"
-#include "gamestate.h"
-#include "sdl_renderer.h"
+#include "game_state.h"
+#include "renderer.h"
+#include <stdbool.h>
 
 GameState gs = { 0 };
-SDLRenderer* renderer = NULL;
 
 static double degtorad(double deg)
 {
@@ -47,8 +49,8 @@ void init_game_state(SDL_Window* window, int num_players)
 		double cost, sint, theta;
 
 		theta = (double)heading * PI / 180;
-		cost = ::cos(theta);
-		sint = ::sin(theta);
+		cost = cos(theta);
+		sint = sin(theta);
 
 		gs._ships[i].position.x = (w / 2) + r * cost;
 		gs._ships[i].position.y = (h / 2) + r * sint;
@@ -102,8 +104,8 @@ void move_ship(int which, double heading, double thrust, int fire)
 	if (ship->cooldown == 0) {
 		if (fire) {
 			for (int i = 0; i < MAX_BULLETS; i++) {
-				double dx = ::cos(degtorad(ship->heading));
-				double dy = ::sin(degtorad(ship->heading));
+				double dx = cos(degtorad(ship->heading));
+				double dy = sin(degtorad(ship->heading));
 				if (!ship->bullets[i].active) {
 					ship->bullets[i].active = true;
 					ship->bullets[i].position.x = ship->position.x + (ship->radius * dx);
@@ -118,8 +120,8 @@ void move_ship(int which, double heading, double thrust, int fire)
 	}
 
 	if (thrust) {
-		double dx = thrust * ::cos(degtorad(heading));
-		double dy = thrust * ::sin(degtorad(heading));
+		double dx = thrust * cos(degtorad(heading));
+		double dy = thrust * sin(degtorad(heading));
 
 		ship->velocity.dx += dx;
 		ship->velocity.dy += dy;
@@ -215,7 +217,8 @@ int fletcher32_checksum(short* data, size_t len)
 
 void buffer_event(SDL_Event const* e, LocalInput* input)
 {
-
+	(void)input;
+	(void)e;
 }
 
 void capture_input_state(LocalInput* input)
@@ -255,40 +258,36 @@ void step_game(LocalInput const* inputs, int disconnect_flags)
 	update_game_state(gs_inputs, disconnect_flags);
 }
 
-void draw_game(ConnectionReport const* connection_report)
+void draw_game(SDL_Renderer* renderer, ConnectionReport const* connection_report)
 {
-	if (renderer != nullptr) {
-		renderer->Draw(&gs, connection_report);
-	}
+	draw(renderer, &gs, connection_report);
 }
 
 void setup_game(SDL_Window* window, int num_players)
 {
-	renderer = new SDLRenderer(window);
 	init_game_state(window, num_players);
 }
 
 void tear_down_game()
 {
 	memset(&gs, 0, sizeof(gs));
-
-	delete renderer;
-	renderer = NULL;
 }
 
-bool __cdecl begin_game(const char*)
+int begin_game(const char* game)
 {
+	(void)game;
 	return true;
 }
 
-bool __cdecl load_game_state(unsigned char* buffer, int len)
+int load_game_state(unsigned char* buffer, int len)
 {
 	memcpy(&gs, buffer, len);
 	return true;
 }
 
-bool __cdecl save_game_state(unsigned char** buffer, int* len, int* checksum, int)
+int save_game_state(unsigned char** buffer, int* len, int* checksum, int frame)
 {
+	(void)frame;
 	*len = sizeof(gs);
 	*buffer = (unsigned char*)malloc(*len);
 	if (!*buffer) {
@@ -299,9 +298,10 @@ bool __cdecl save_game_state(unsigned char** buffer, int* len, int* checksum, in
 	return true;
 }
 
-bool __cdecl log_game_state(char* filename, unsigned char* buffer, int)
+int log_game_state(char* filename, unsigned char* buffer, int len)
 {
-	FILE* fp = nullptr;
+	(void)len;
+	FILE* fp = NULL;
 	fopen_s(&fp, filename, "w");
 	if (fp) {
 		GameState* in_gs = (GameState*)buffer;
@@ -345,7 +345,7 @@ bool __cdecl log_game_state(char* filename, unsigned char* buffer, int)
 	return true;
 }
 
-void __cdecl free_game_state(void* buffer)
+void free_game_state(void* buffer)
 {
 	free(buffer);
 }
