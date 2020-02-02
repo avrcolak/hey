@@ -1,33 +1,37 @@
-#ifndef _NON_GAMESTATE_H_
-#define _NON_GAMESTATE_H_
+#ifndef _CONNECTION_REPORT_H_
+#define _CONNECTION_REPORT_H_
 
-#define MAX_REMOTES 64
+#define MAX_PARTICIPANTS 64
 
-typedef enum ConnectionType {
-    PLAYER_TYPE_Local,
-    PLAYER_TYPE_Remote,
-    PLAYER_TYPE_Spectator,
-} ConnectionType;
+enum PARTICIPANT_TYPE 
+{
+	PARTICIPANT_TYPE_local,
+	PARTICIPANT_TYPE_remote,
+	PARTICIPANT_TYPE_spectator,
+};
 
-typedef enum ConnectionState {
-   CONNECTION_STATE_Connecting = 0,
-   CONNECTION_STATE_Synchronizing,
-   CONNECTION_STATE_Running,
-   CONNECTION_STATE_Disconnected,
-   CONNECTION_STATE_Disconnecting,
-} ConnectionState;
+enum CONNECTION_STATE 
+{
+	CONNECTION_STATE_connecting = 0,
+	CONNECTION_STATE_synchronizing,
+	CONNECTION_STATE_running,
+	CONNECTION_STATE_disconnected,
+	CONNECTION_STATE_disconnecting,
+};
 
-typedef struct ConnectionInfo {
-   ConnectionType type;
-   ConnectionState state;
-   int connect_progress;
-   int disconnect_timeout;
-   int disconnect_start;
+typedef struct ConnectionInfo
+{
+	enum PARTICIPANT_TYPE type;
+	enum CONNECTION_STATE state;
+	int connect_progress;
+	int disconnect_timeout;
+	int disconnect_start;
 } ConnectionInfo;
 
-typedef struct ConnectionReport {
-   int num_players;
-   ConnectionInfo players[MAX_REMOTES];
+typedef struct ConnectionReport
+{
+	int num_participants;
+	ConnectionInfo participants[MAX_PARTICIPANTS];
 } ConnectionReport;
 
-#endif
+#endif // ifndef _CONNECTION_REPORT_H_
