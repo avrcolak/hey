@@ -1,3 +1,4 @@
+#include <imgui.h>
 #include <SDL.h>
 #include <stdio.h>
 #include <string.h>
@@ -84,8 +85,28 @@ void draw_ship(SDL_Renderer *renderer, int which, GameState const *gs)
 		}
 	}
 
+	SDL_Point text_offsets[] = 
+	{
+		{ gs->bounds.left + 2, gs->bounds.top + 2 },
+		{ gs->bounds.right - 2, gs->bounds.top + 2 },
+		{ gs->bounds.left + 2, gs->bounds.bottom - 2 },
+		{ gs->bounds.right - 2, gs->bounds.bottom - 2 },
+	};
+
 	char buf[32];
 	sprintf_s(buf, sizeof buf, "Hits: %d", ship->score);
+
+	ImVec2 text_size = ImGui::CalcTextSize(buf);
+
+	int ya[] = { 0, 0, -1, -1 };
+	int xa[] = { 0, -1, 0, -1 };
+
+	ImGui::GetForegroundDrawList()->AddText(
+		ImVec2(
+			text_offsets[which].x + text_size.x * xa[which],
+			text_offsets[which].y + text_size.y * ya[which]),
+		IM_COL32_WHITE,
+		buf);
 }
 
 void draw_connect_state(
@@ -125,7 +146,14 @@ void draw_connect_state(
 
 	if (*status)
 	{
+		ImDrawList* draw_list = ImGui::GetForegroundDrawList();
 
+		float x = (float)(ship->position.x - (double)ImGui::CalcTextSize(status).x / 2);
+
+		draw_list->AddText(
+			ImVec2(x, (float)(ship->position.y + (double)PROGRESS_TEXT_OFFSET)),
+			IM_COL32_WHITE,
+			status);
 	}
 	if (progress >= 0)
 	{

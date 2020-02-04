@@ -30,6 +30,7 @@ typedef struct ConnectionInfo
 
 typedef struct ConnectionReport
 {
+	char status[1024];
 	int num_participants;
 	ConnectionInfo participants[MAX_PARTICIPANTS];
 } ConnectionReport;

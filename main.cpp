@@ -124,7 +124,7 @@ static bool __cdecl on_event(GGPOEvent *info)
 		{
 			connection_report.participants[i].state = CONNECTION_STATE_running;
 		}
-		// renderer->SetStatusText("");
+		strcpy_s(connection_report.status, "");
 		break;
 
 	case GGPO_EVENTCODE_CONNECTION_INTERRUPTED:
@@ -161,15 +161,47 @@ static bool __cdecl on_event(GGPOEvent *info)
 	return true;
 }
 
-static void draw_gui(SdlHandles handles)
+static void setup_imgui_frame(SdlHandles handles)
 {
-	bool show_demo_window = true;
-	bool show_another_window = false;
-	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-
 	ImGui_ImplOpenGL2_NewFrame();
 	ImGui_ImplSDL2_NewFrame(handles.window);
 	ImGui::NewFrame();
+}
+
+void draw_centered_text(SdlHandles handles, const char* str, int y)
+{
+	int w, h;
+	SDL_GetWindowSize(handles.window, &w, &h);
+
+	ImGui::GetForegroundDrawList()->AddText(
+		ImVec2(w / 2 - ImGui::CalcTextSize(str).x / 2, (float)y),
+		IM_COL32_WHITE,
+		str);
+}
+
+void draw_checksum(SdlHandles handles, FrameInfo frame_info, int y)
+{
+	char checksum[128];
+
+	sprintf_s(
+		checksum,
+		COUNT_OF(checksum), 
+		"Frame: %04d Checksum: %08x", 
+		frame_info.number,
+		frame_info.hash);
+
+	draw_centered_text(handles, checksum, y);
+}
+
+static void draw_gui(SdlHandles handles)
+{
+	draw_checksum(handles, frame_report.periodic, 18);
+	draw_checksum(handles, frame_report.current, 34);
+	draw_centered_text(handles, connection_report.status, 448);
+
+	bool show_demo_window = true;
+	bool show_another_window = false;
+	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 	if (show_demo_window)
 	{
@@ -217,7 +249,6 @@ static void draw_gui(SdlHandles handles)
 	}
 
 	ImGui::Render();
-
 	handles.glUseProgram(0);
 	ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 }
@@ -240,7 +271,7 @@ static void show_disconnected_player(GGPOErrorCode result, int player)
 			result);
 	}
 
-	// renderer->SetStatusText(logbuf);
+	strcpy_s(connection_report.status, logbuf);
 }
 
 static void disconnect_player(int player)
@@ -379,6 +410,7 @@ static void main_loop(SdlHandles sdl)
 			next = now + (1000 / 60);
 		}
 
+		setup_imgui_frame(sdl);
 		draw_game(sdl.renderer, &connection_report);
 		draw_gui(sdl);
 
@@ -636,7 +668,7 @@ static void setup_ggpo(ClientInit init)
 			init.host_ip,
 			init.host_port);
 
-		// renderer->SetStatusText("Starting new spectator session");
+		strcpy_s(connection_report.status, "Starting new spectator session.");
 
 		ggpo = handles;
 		return;
@@ -678,7 +710,8 @@ static void setup_ggpo(ClientInit init)
 			connection_report.participants[i].connect_progress = 0;
 		}
 	}
-	// renderer->SetStatusText("Connecting to peers.");
+
+	strcpy_s(connection_report.status, "Connecting to peers.");
 
 	ggpo = handles;
 }
