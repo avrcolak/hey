@@ -40,6 +40,7 @@ static void set_draw_color(SDL_Renderer *renderer, SDL_Color color)
 void draw_ship(SDL_Renderer *renderer, int which, GameState const *gs)
 {
 	Ship const *ship = gs->ships + which;
+	SDL_Color c = ship_colors[which];
 
 	SDL_Point shape[] =
 	{
@@ -66,6 +67,7 @@ void draw_ship(SDL_Renderer *renderer, int which, GameState const *gs)
 		shape[i].y = (int)(newy + ship->position.y);
 	}
 
+	set_draw_color(renderer, c);
 	SDL_RenderDrawLines(renderer, shape, 5);
 
 	for (int i = 0; i < MAX_BULLETS; i++)
@@ -101,11 +103,11 @@ void draw_ship(SDL_Renderer *renderer, int which, GameState const *gs)
 	int ya[] = { 0, 0, -1, -1 };
 	int xa[] = { 0, -1, 0, -1 };
 
-	ImGui::GetForegroundDrawList()->AddText(
+	ImGui::GetBackgroundDrawList()->AddText(
 		ImVec2(
 			text_offsets[which].x + text_size.x * xa[which],
 			text_offsets[which].y + text_size.y * ya[which]),
-		IM_COL32_WHITE,
+		IM_COL32(c.r, c.g, c.b, c.a),
 		buf);
 }
 
@@ -146,7 +148,7 @@ void draw_connect_state(
 
 	if (*status)
 	{
-		ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+		ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
 
 		float x = (float)(ship->position.x - (double)ImGui::CalcTextSize(status).x / 2);
 
@@ -168,7 +170,7 @@ void draw_connect_state(
 			(int)PROGRESS_BAR_WIDTH,
 			(int)PROGRESS_BAR_HEIGHT };
 
-		set_draw_color(renderer, bar);
+		set_draw_color(renderer, grey);
 		SDL_RenderDrawRect(renderer, &rc);
 
 		rc.w = min(100, progress) * PROGRESS_BAR_WIDTH / 100;
@@ -198,13 +200,10 @@ void draw(
 
 	for (int i = 0; i < gs->num_ships; i++)
 	{
-		set_draw_color(renderer, ship_colors[i]);
 		draw_ship(renderer, i, gs);
 
 		draw_connect_state(renderer, 
 			&gs->ships[i],
 			&cr->participants[i]);
 	}
-
-	SDL_RenderFlush(renderer);
 }

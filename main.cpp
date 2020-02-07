@@ -11,6 +11,9 @@
 #include "game.h"
 #include "utils.h"
 
+#define MAX_GRAPH_SIZE 4096
+#define MAX_FAIRNESS 20
+
 enum ROLE_TYPE
 {
 	ROLE_TYPE_Spectator,
@@ -66,12 +69,18 @@ typedef struct SdlHandles
 	SDL_Renderer* renderer;
 } SdlHandles;
 
+typedef struct ClientState
+{
+	bool quit;
+	bool show_performance_monitor;
+} ClientState;
+
 static ConnectionReport connection_report;
 
 static GgpoHandles ggpo;
 
-// remotes[i] corresponds with connection_report.connections[i]
-static GGPOPlayerHandle remotes[MAX_PARTICIPANTS];
+// participants[i] corresponds with connection_report.participants[i]
+static GGPOPlayerHandle participants[MAX_PARTICIPANTS];
 
 static FrameReport frame_report;
 
@@ -79,7 +88,7 @@ static void set_connection_state(GGPOPlayerHandle handle, CONNECTION_STATE state
 {
 	for (int i = 0; i < connection_report.num_participants; i++)
 	{
-		if (remotes[i] == handle)
+		if (participants[i] == handle)
 		{
 			connection_report.participants[i].connect_progress = 0;
 			connection_report.participants[i].state = state;
@@ -92,7 +101,7 @@ static void update_connect_progress(GGPOPlayerHandle handle, int progress)
 {
 	for (int i = 0; i < connection_report.num_participants; i++)
 	{
-		if (remotes[i] == handle)
+		if (participants[i] == handle)
 		{
 			connection_report.participants[i].connect_progress = progress;
 			break;
@@ -130,7 +139,7 @@ static bool __cdecl on_event(GGPOEvent *info)
 	case GGPO_EVENTCODE_CONNECTION_INTERRUPTED:
 		for (int i = 0; i < connection_report.num_participants; i++)
 		{
-			if (remotes[i] == info->u.connection_interrupted.player)
+			if (participants[i] == info->u.connection_interrupted.player)
 			{
 				connection_report.participants[i].disconnect_start =
 					SDL_GetTicks();
@@ -168,12 +177,12 @@ static void setup_imgui_frame(SdlHandles handles)
 	ImGui::NewFrame();
 }
 
-void draw_centered_text(SdlHandles handles, const char* str, int y)
+void draw_centered_text(SdlHandles handles, char const *str, int y)
 {
 	int w, h;
 	SDL_GetWindowSize(handles.window, &w, &h);
 
-	ImGui::GetForegroundDrawList()->AddText(
+	ImGui::GetBackgroundDrawList()->AddText(
 		ImVec2(w / 2 - ImGui::CalcTextSize(str).x / 2, (float)y),
 		IM_COL32_WHITE,
 		str);
@@ -193,64 +202,206 @@ void draw_checksum(SdlHandles handles, FrameInfo frame_info, int y)
 	draw_centered_text(handles, checksum, y);
 }
 
-static void draw_gui(SdlHandles handles)
+void draw_performance_monitor(ClientState *cs)
+{
+	GGPOPlayerHandle remotes[MAX_PLAYERS];
+
+	int num_remotes = 0;
+	for (int i = 0; i < connection_report.num_participants; i++)
+	{
+		if (connection_report.participants[i].type == PARTICIPANT_TYPE_remote)
+		{
+			remotes[num_remotes] = participants[i];
+			num_remotes++;
+		}
+	}
+
+	static int graph_size = 0;
+	static int first_graph_index = 0;
+
+	GGPONetworkStats stats = { 0 };
+	int i;
+
+	if (graph_size < MAX_GRAPH_SIZE)
+	{
+		i = graph_size;
+		graph_size++;
+	}
+	else
+	{
+		i = first_graph_index;
+		first_graph_index = (first_graph_index + 1) % MAX_GRAPH_SIZE;
+	}
+
+	static float ping_graph[MAX_PLAYERS][MAX_GRAPH_SIZE] = { 0 };
+	static float remote_fairness_graph[MAX_PLAYERS][MAX_GRAPH_SIZE] = { 0 };
+	static float fairness_graph[MAX_GRAPH_SIZE] = { 0 };
+
+	for (int j = 0; j < num_remotes; j++)
+	{
+		ggpo_get_network_stats(ggpo.session, remotes[j], &stats);
+
+		ping_graph[j][i] = (float)stats.network.ping;
+
+		// Frame Advantage
+		remote_fairness_graph[j][i] = 
+			(float)stats.timesync.remote_frames_behind;
+
+		if (stats.timesync.local_frames_behind < 0 &&
+			stats.timesync.remote_frames_behind < 0)
+		{
+			// Both think it's unfair (which, ironically, is fair).
+			fairness_graph[i] = (float)abs(
+				abs(stats.timesync.local_frames_behind) -
+				abs(stats.timesync.remote_frames_behind));
+		}
+		else if (stats.timesync.local_frames_behind > 0 &&
+			stats.timesync.remote_frames_behind > 0)
+		{
+			// Impossible! Unless the network has negative transmit time.
+			fairness_graph[i] = 0;
+		}
+		else
+		{
+			// They disagree.
+			fairness_graph[i] = (float)
+				abs(stats.timesync.local_frames_behind) +
+				abs(stats.timesync.remote_frames_behind);
+		}
+	}
+
+	ImGui::Begin("Performance Monitor", &cs->show_performance_monitor);
+
+	ImGui::Separator();
+	ImGui::Text("Network");
+
+	for (int j = 0; j < num_remotes; j++)
+	{
+		char remote_label[128];
+		sprintf_s(remote_label, COUNT_OF(remote_label), "Remote %d", j);
+		ImGui::Text(remote_label);
+
+		ImGui::PlotLines(
+			"",
+			ping_graph[j],
+			MAX_GRAPH_SIZE,
+			i + MAX_GRAPH_SIZE,
+			NULL,
+			0, 
+			500,
+			ImVec2(512, 100));
+	}
+
+	char latency_in_ms[128], latency_in_frames[128], kbps[128];
+
+	sprintf_s(
+		latency_in_ms, 
+		COUNT_OF(latency_in_ms), 
+		"%d ms",
+		stats.network.ping);
+
+	sprintf_s(
+		latency_in_frames,
+		COUNT_OF(latency_in_frames),
+		"%.1f frames",
+		stats.network.ping ? stats.network.ping * 60.0 / 1000 : 0);
+
+	sprintf_s(kbps,
+		COUNT_OF(kbps),
+		"%.2f kilobytes/sec",
+		stats.network.kbps_sent / 8.0);
+
+	ImGui::Columns(4, "", false);
+	ImGui::Text("Latency:"); ImGui::NextColumn();
+	ImGui::Text(latency_in_ms); ImGui::NextColumn();
+	ImGui::Text("Data Rate:"); ImGui::NextColumn();
+	ImGui::Text(latency_in_frames); ImGui::NextColumn();
+	ImGui::Text("Latency:"); ImGui::NextColumn();
+	ImGui::Text(latency_in_frames); ImGui::NextColumn();
+	ImGui::Columns(1);
+
+	ImGui::Separator();
+	ImGui::Text("Synchronization");
+
+	for (int j = 0; j < num_remotes; j++)
+	{
+		char remote_label[128];
+		sprintf_s(remote_label, COUNT_OF(remote_label), "Remote %d", j);
+		ImGui::Text(remote_label);
+
+		ImGui::PlotLines(
+			"",
+			remote_fairness_graph[j],
+			MAX_GRAPH_SIZE,
+			i + MAX_GRAPH_SIZE,
+			NULL,
+			-MAX_FAIRNESS,
+			MAX_FAIRNESS,
+			ImVec2(512, 120));
+
+		char remote_frames_behind[128];
+
+		sprintf_s(
+			remote_frames_behind,
+			COUNT_OF(remote_frames_behind), 
+			"%d frames behind", 
+			stats.timesync.remote_frames_behind);
+
+		ImGui::Columns(4, "", false);
+		ImGui::Text("Fairness:"); ImGui::NextColumn();
+		ImGui::Text(remote_frames_behind); ImGui::NextColumn();
+		ImGui::Columns(1);
+	}
+
+	ImGui::Text("Local");
+	ImGui::PlotLines(
+		"",
+		fairness_graph,
+		MAX_GRAPH_SIZE,
+		i + MAX_GRAPH_SIZE,
+		NULL,
+		-MAX_FAIRNESS,
+		MAX_FAIRNESS,
+		ImVec2(512, 120));
+
+	char local_frames_behind[128];
+
+	sprintf_s(
+		local_frames_behind,
+		COUNT_OF(local_frames_behind),
+		"%d frames behind",
+		stats.timesync.local_frames_behind);
+
+	ImGui::Columns(4, "", false);
+	ImGui::Text("Fairness:"); ImGui::NextColumn();
+	ImGui::Text(local_frames_behind); ImGui::NextColumn();
+	ImGui::Columns(1);
+
+	ImGui::Separator();
+
+	char pid[128];
+	sprintf_s(pid, COUNT_OF(pid), "Process ID: %lu", GetCurrentProcessId());
+
+	ImGui::Text(pid);
+	ImGui::SameLine(ImGui::GetWindowWidth() - 48);
+	if (ImGui::Button("Close"))
+	{
+		cs->show_performance_monitor = false;
+	}
+
+	ImGui::End();
+}
+
+static void draw_gui(SdlHandles handles, ClientState *cs)
 {
 	draw_checksum(handles, frame_report.periodic, 18);
 	draw_checksum(handles, frame_report.current, 34);
 	draw_centered_text(handles, connection_report.status, 448);
 
-	bool show_demo_window = true;
-	bool show_another_window = false;
-	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-
-	if (show_demo_window)
+	if (cs->show_performance_monitor)
 	{
-		ImGui::ShowDemoWindow(&show_demo_window);
+		draw_performance_monitor(cs);
 	}
-
-	{
-		static float f = 0.0f;
-		static int counter = 0;
-
-		ImGui::Begin("Hello, world!");
-
-		ImGui::Text("This is some useful text.");
-		ImGui::Checkbox("Demo Window", &show_demo_window);
-		ImGui::Checkbox("Another Window", &show_another_window);
-
-		ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
-		ImGui::ColorEdit3("clear color", (float*)&clear_color);
-
-		if (ImGui::Button("Button"))
-		{
-			counter++;
-		}
-
-		ImGui::SameLine();
-		ImGui::Text("counter = %d", counter);
-		ImGui::Text(
-			"Application average %.3f ms/frame (%.1f FPS)",
-			1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-
-		ImGui::End();
-	}
-
-	if (show_another_window)
-	{
-		ImGui::Begin("Another Window", &show_another_window);
-
-		ImGui::Text("Hello from another window!");
-		if (ImGui::Button("Close Me"))
-		{
-			show_another_window = false;
-		}
-
-		ImGui::End();
-	}
-
-	ImGui::Render();
-	handles.glUseProgram(0);
-	ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 }
 
 static void show_disconnected_player(GGPOErrorCode result, int player)
@@ -278,26 +429,29 @@ static void disconnect_player(int player)
 {
 	if (player < connection_report.num_participants)
 	{
-		GGPOErrorCode result = ggpo_disconnect_player(ggpo.session, remotes[player]);
+		GGPOErrorCode result = ggpo_disconnect_player(ggpo.session, participants[player]);
 
 		show_disconnected_player(result, player);
 	}
 }
 
-static int client_process_event(SDL_Event e, SdlHandles sdl)
+static void client_process_event(SDL_Event e, SdlHandles sdl, ClientState *cs)
 {
 	switch (e.type) {
 	case SDL_QUIT:
-		return 1;
+		cs->quit = true;
+		return;
 		break;
 
 	case SDL_KEYDOWN:
 		if (e.key.keysym.sym == SDLK_p)
 		{
+			cs->show_performance_monitor = !cs->show_performance_monitor;
 		}
 		else if (e.key.keysym.sym == SDLK_ESCAPE)
 		{
-			return 1;
+			cs->quit = true;
+			return;
 		}
 		else if (e.key.keysym.sym >= SDLK_F1 && e.key.keysym.sym <= SDLK_F12)
 		{
@@ -313,14 +467,15 @@ static int client_process_event(SDL_Event e, SdlHandles sdl)
 			SDL_UpdateWindowSurface(sdl.window);
 			break;
 		case SDL_WINDOWEVENT_CLOSE:
-			return 1;
+			cs->quit = true;
+			return;
 		}
 		break;
 	}
 
 	ImGui_ImplSDL2_ProcessEvent(&e);
 
-	return 0;
+	return;
 }
 
 static void update_frame_report()
@@ -375,6 +530,15 @@ static void work(LocalInput *input)
 	}
 }
 
+static void render(SdlHandles sdl)
+{
+	SDL_RenderFlush(sdl.renderer);
+	ImGui::Render();
+	sdl.glUseProgram(0);
+	ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+	SDL_GL_SwapWindow(sdl.window);
+}
+
 static void main_loop(SdlHandles sdl)
 {
 	frame_report = { 0 };
@@ -382,17 +546,20 @@ static void main_loop(SdlHandles sdl)
 	int start, next, now;
 	start = next = now = SDL_GetTicks();
 
+	ClientState client_state = { 0 };
 	LocalInput local_input = { 0 };
 
 	while (1)
 	{
+		setup_imgui_frame(sdl);
+
 		SDL_Event e;
 
 		while (SDL_PollEvent(&e) != 0)
 		{
-			int quit = client_process_event(e, sdl);
+			client_process_event(e, sdl, &client_state);
 
-			if (quit != 0)
+			if (client_state.quit)
 			{
 				return;
 			}
@@ -410,11 +577,9 @@ static void main_loop(SdlHandles sdl)
 			next = now + (1000 / 60);
 		}
 
-		setup_imgui_frame(sdl);
 		draw_game(sdl.renderer, &connection_report);
-		draw_gui(sdl);
-
-		SDL_GL_SwapWindow(sdl.window);
+		draw_gui(sdl, &client_state);
+		render(sdl);
 	}
 }
 
@@ -439,6 +604,8 @@ static SdlHandles setup_sdl()
 	SDL_GLContext gl_context = SDL_GL_CreateContext(window);
 	SDL_GL_MakeCurrent(window, gl_context);
 
+	// SDL_Renderer will push but not pop its shader program, so we have
+	// to do so before using rendering with Dear ImGui.
 	PFNGLUSEPROGRAMPROC glUseProgram =
 		(PFNGLUSEPROGRAMPROC)SDL_GL_GetProcAddress("glUseProgram");
 
@@ -447,6 +614,7 @@ static SdlHandles setup_sdl()
 		SDL_GL_SetSwapInterval(1);
 	}
 
+	// To match chosen Dear ImGui implementation.
 	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
 	SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
 
@@ -692,7 +860,7 @@ static void setup_ggpo(ClientInit init)
 		result = ggpo_add_player(
 			handles.session, init.players + i, &handle);
 
-		remotes[i] = handle;
+		participants[i] = handle;
 
 		// HACK: Slightly fragile cast.
 		connection_report.participants[i].type =
